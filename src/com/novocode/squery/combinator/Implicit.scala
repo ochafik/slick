@@ -1,4 +1,5 @@
 package com.novocode.squery.combinator
+import java.sql.Timestamp
 
 object Implicit {
   implicit def columnOfBooleanToBooleanColumn(c: Column[java.lang.Boolean]): BooleanColumn = c match {
@@ -16,9 +17,15 @@ object Implicit {
     case _ => new WrappedColumn(c) with StringColumn
   }
 
+  implicit def columnOfTimestampToTimestampColumn(c: Column[Timestamp]): TimestampColumn = c match {
+    case c: TimestampColumn => c
+    case _ => new WrappedColumn(c) with TimestampColumn
+  }
+
   implicit def intToConstColumn(v: Int) = new ConstColumn(java.lang.Integer.valueOf(v)) with IntColumn
   implicit def integerToConstColumn(v: java.lang.Integer) = new ConstColumn(v) with IntColumn
   implicit def stringToConstColumn(v: String) = new ConstColumn(v) with StringColumn
+  implicit def timestampToConstColumn(v: Timestamp) = new ConstColumn(v) with TimestampColumn
 
   implicit def tableToQuery[T <: TableBase.T_](t: T) = Query(t.withOp(new ColumnOp.BaseTableQueryOp(t)))
 

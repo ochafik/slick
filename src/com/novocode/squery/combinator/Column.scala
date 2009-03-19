@@ -2,6 +2,7 @@ package com.novocode.squery.combinator
 
 import com.novocode.squery.session.{PositionedResult, PositionedParameters}
 import java.io.PrintWriter
+import java.sql.Timestamp
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -61,6 +62,11 @@ trait StringColumn extends SimpleColumn[String] {
   def setParameter(ps: PositionedParameters, value: String): Unit = ps.setString(value)
 }
 
+trait TimestampColumn extends SimpleColumn[Timestamp] {
+  def getResult(rs: PositionedResult): Timestamp = rs.nextTimestamp
+  def setParameter(ps: PositionedParameters, value: Timestamp): Unit = ps.setTimestamp(value)
+}
+
 abstract class WrappedColumn[T](val parent: SimpleColumn[T]) extends ConvertibleColumn[T] { self: SimpleColumn[T] =>
   def dumpThis(out: PrintWriter, prefix: String, name: String, dumper: Dump.Dumper) {
     dumper(out, prefix, name+"<WrappedColumn> ", parent)
@@ -98,7 +104,8 @@ abstract class Table[T](val tableName: String) extends TableBase[T] with Convert
   def stringColumn(n: String, options: ColumnOption*) = new NamedColumn[String](this, n, options:_*) with StringColumn
   def intColumn(n: String, options: ColumnOption*) = new NamedColumn[java.lang.Integer](this, n, options:_*) with IntColumn
   def booleanColumn(n: String, options: ColumnOption*) = new NamedColumn[java.lang.Boolean](this, n, options:_*) with BooleanColumn
-
+  def timestampColumn(n: String, options: ColumnOption*) = new NamedColumn[Timestamp](this, n, options:_*) with TimestampColumn
+  
   def * : ConvertibleColumn[T]
 
   def getResult(rs: PositionedResult) = *.getResult(rs)
