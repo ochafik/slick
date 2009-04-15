@@ -1,4 +1,4 @@
-package test
+package com.novocode.squery
 
 import java.lang.Integer
 import java.sql.Timestamp
@@ -9,8 +9,11 @@ import com.novocode.squery.combinator.Implicit._
 import com.novocode.squery.session._
 import com.novocode.squery.session.SessionFactory._
 
-object SQuery2Test2 {
-  def main(args: Array[String]) {
+import org.junit._
+
+class SQuery2SimpleTest {
+  @Test
+  def test {
 
     case class User(id: Integer, first: String, last: String)
 

@@ -6,8 +6,11 @@ import com.novocode.squery.combinator.Implicit._
 import com.novocode.squery.session._
 import com.novocode.squery.session.SessionFactory._
 
-object UnionTest {
-  def main(args: Array[String]) {
+import org.junit._
+
+class UnionTest {
+  @Test
+  def test {
 
     object Managers extends Table[(Integer, String, String)]("managers") {
       def id = intColumn("id")
