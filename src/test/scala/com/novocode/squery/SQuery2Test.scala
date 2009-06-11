@@ -1,6 +1,6 @@
 package com.novocode.squery
 
-import com.novocode.squery.combinator.{Table, Join, Query, ColumnOp, StatementCombinatorQueryInvoker, Projection}
+import com.novocode.squery.combinator.{Table, Join, Query, StatementCombinatorQueryInvoker, Projection, NamingContext}
 import com.novocode.squery.combinator.sql.{QueryBuilder, InsertUpdateBuilder, DDLBuilder}
 import com.novocode.squery.combinator.Implicit._
 
@@ -22,6 +22,16 @@ class SQuery2Test {
       def orderID = intColumn("orderID")
       def * = userID ~ orderID
     }
+
+    val q1nc = NamingContext()
+    val q2nc = NamingContext()
+    val q3nc = NamingContext()
+    val q4nc = NamingContext()
+    val q5nc = NamingContext()
+    val m1anc = NamingContext()
+    val m1bnc = NamingContext()
+    val m2anc = NamingContext()
+    val m2bnc = NamingContext()
 
     val q1 = for(u <- Users) yield u
 
@@ -50,32 +60,49 @@ class SQuery2Test {
         where { o => o.orderID is queryToSubQuery(for { o2 <- Orders where(o.userID is _.userID) } yield o2.orderID.max) }
     ) yield o.orderID
 
-    q1.dump("q1: ")
+    q1.dump("q1: ", q1nc)
+    println(QueryBuilder.buildSelect(q1, q1nc))
     println()
-    q2.dump("q2: ")
+    q2.dump("q2: ", q2nc)
+    println(QueryBuilder.buildSelect(q2, q2nc))
     println()
-    q3.dump("q3: ")
+    q3.dump("q3: ", q3nc)
+    println(QueryBuilder.buildSelect(q3, q3nc))
     println()
-    q4.dump("q4: ")
+    q4.dump("q4: ", q4nc)
+    println(QueryBuilder.buildSelect(q4, q4nc))
     println()
-    q5.dump("q5: ")
+    q5.dump("q5: ", q5nc)
+    println(QueryBuilder.buildSelect(q5, q5nc))
 
-    val usersBase = Users.withOp(new ColumnOp.BaseTableQueryOp(Users))
+    val usersBase = Users.withOp(new Table.Alias(Users))
 
     {
       println()
-      println("m1a: " + new QueryBuilder(for {
+      val m1a = for {
         u <- Query(usersBase)
         r <- Query(u)
-      } yield r).buildSelect)
-      println("m1b: " + new QueryBuilder(Query(usersBase)).buildSelect)
+      } yield r
+      val m1b = Query(usersBase)
+      m1a.dump("m1a: ", m1anc)
+      println()
+      m1b.dump("m1b: ", m1bnc)
+      println()
+      println("m1a: " + QueryBuilder.buildSelect(m1a, m1anc))
+      println("m1b: " + QueryBuilder.buildSelect(m1b, m1bnc))
     }
 
     {
-      val f = { t:Table[_] => t.withOp(new ColumnOp.BaseTableQueryOp(t)) }
       println()
-      println("m2a: "+ new QueryBuilder(for { u <- Query(Users) } yield f(u)).buildSelect)
-      println("m2b: " + new QueryBuilder(Query(f(Users))).buildSelect)
+      val f = { t:Table[_] => t.withOp(new Table.Alias(t)) }
+      val m2a = for { u <- Query(Users) } yield f(u)
+      val m2b = Query(f(Users))
+      m2a.dump("m2a: ", m2anc)
+      println()
+      m2b.dump("m2b: ", m2bnc)
+      println()
+      println("m2a: "+ QueryBuilder.buildSelect(m2a, m2anc))
+      println("m2b: " + QueryBuilder.buildSelect(m2b, m2bnc))
     }
 
     /*
@@ -89,20 +116,15 @@ class SQuery2Test {
     */
 
     println()
-    println("q1: " + new QueryBuilder(q1).buildSelect)
-    println("q2: " + new QueryBuilder(q2).buildSelect)
-    println("q3: " + new QueryBuilder(q3).buildSelect)
-    println("q4: " + new QueryBuilder(q4).buildSelect)
-    println("q5: " + new QueryBuilder(q5).buildSelect)
 
     println("Insert1: " + new InsertUpdateBuilder(Users).buildInsert)
     println("Insert2: " + new InsertUpdateBuilder(Users.first ~ Users.last).buildInsert)
 
     val d1 = Users.where(_.id is 42)
     val d2 = for(u <- Users where( _.id notIn Orders.map(_.userID) )) yield u
-    println("d0: " + new QueryBuilder(Users).buildDelete)
-    println("d1: " + new QueryBuilder(d1).buildDelete)
-    println("d2: " + new QueryBuilder(d2).buildDelete)
+    println("d0: " + QueryBuilder.buildDelete(Users, NamingContext()))
+    println("d1: " + QueryBuilder.buildDelete(d1, NamingContext()))
+    println("d2: " + QueryBuilder.buildDelete(d2, NamingContext()))
 
     println(new DDLBuilder(Users).buildCreateTable)
     println(new DDLBuilder(Orders).buildCreateTable)
