@@ -97,7 +97,8 @@ class BasicQueryBuilder(qval: Node) {
     val b = new SQLBuilder
     expr(qval.nodeDelegate, b)
     fromSlot = b.createSlot
-    for((name, t) <- new HashMap ++= localTables) { //-- used to iterate over mutable collection here!
+    //for((name, t) <- new HashMap ++= localTables) { //-- works
+    for((name, t) <- localTables) { //-- fails
       fromSlot += "{from "
       t match {
         case Alias(base: Table) => fromSlot += "TAB " += name
@@ -126,4 +127,5 @@ object JoinTest extends Application {
 
   val s = new BasicQueryBuilder(q2).buildSelect
   println(s)
+  if(s != "t2.col{from joinOn t2.col}") error("wrong result");
 }
