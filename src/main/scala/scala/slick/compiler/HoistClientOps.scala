@@ -17,7 +17,7 @@ class HoistClientOps extends Phase {
       /* Temporarily create a comprehension that selects a StructNode instead of
        * a ProductNode at the top level. This makes the actual hoisting simpler. */
       val withStruct = Phase.fuseComprehensions.ensureStruct(comp.asInstanceOf[Comprehension])
-      val Some(Pure(StructNode(ch))) = withStruct.select
+      val Some(Pure(StructNode(ch), _)) = withStruct.select
       val base = new AnonSymbol
       val proj = ProductNode(ch.map { case (sym, _) => Select(Ref(base), sym) })
       val t2 = ResultSetMapping(base, withStruct, proj)
@@ -25,18 +25,18 @@ class HoistClientOps extends Phase {
       val (rsmFrom, rsmProj) =
         if(t3 eq t2) {
           // Use original ProductNode form
-          val Comprehension(_, _, _, _, Some(Pure(ProductNode(treeProjChildren))), _, _) = comp
+          val Comprehension(_, _, _, _, Some(Pure(ProductNode(treeProjChildren), _)), _, _) = comp
           val idxproj = ProductNode(1.to(treeProjChildren.length).map(i => Select(Ref(base), new ElementSymbol(i))))
           (comp, idxproj)
         } else {
           // Change it back to ProductNode form
-          val ResultSetMapping(_, newFrom @ Comprehension(_, _, _, _, Some(Pure(StructNode(str))), _, _), newProj) = t3
+          val ResultSetMapping(_, newFrom @ Comprehension(_, _, _, _, Some(Pure(StructNode(str), _)), _, _), newProj) = t3
           val symMap = ch.zipWithIndex.map { case ((sym, _), i) => (sym, ElementSymbol(i+1)) }.toMap
           (newFrom.copy(select = Some(Pure(ProductNode(str.map(_._2)).withComputedTypeNoRec).withComputedTypeNoRec)),
             newProj.replace { case Select(in, f) if symMap.contains(f) => Select(in, symMap(f)) })
         }
-      val rsm2 = ResultSetMapping(base, rewriteDBSide(rsmFrom), rsmProj).nodeWithComputedType(SymbolScope.empty, false)
-      fuseResultSetMappings(rsm.copy(from = rsm2)).nodeWithComputedType(SymbolScope.empty, false)
+      val rsm2 = ResultSetMapping(base, rewriteDBSide(rsmFrom), rsmProj).nodeWithComputedType(SymbolScope.empty, false, true)
+      fuseResultSetMappings(rsm.copy(from = rsm2)).nodeWithComputedType(SymbolScope.empty, false, true)
     }
   }
 
@@ -93,7 +93,7 @@ class HoistClientOps extends Phase {
             "This cannot be done lazily when the value is needed on the database side", ex)
       }
       Library.IfNull.typed(tpe, ch2, LiteralNode.apply(tpe, d))
-    case n => n.nodeMapChildrenKeepType(rewriteDBSide)
+    case n => n.nodeMapChildren(rewriteDBSide, keepType = true)
   }
 
   def unwrap(n: Node): (Node, (Node => Node)) = n match {

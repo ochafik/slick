@@ -52,12 +52,12 @@ trait MySQLDriver extends JdbcDriver { driver =>
 
     final case class RowNum(sym: AnonSymbol, inc: Boolean) extends NullaryNode with TypedNode {
       type Self = RowNum
-      def tpe = StaticType.Long
+      def tpe = ScalaBaseType.longType
       def nodeRebuild = copy()
     }
     final case class RowNumGen(sym: AnonSymbol) extends NullaryNode with TypedNode {
       type Self = RowNumGen
-      def tpe = StaticType.Long
+      def tpe = ScalaBaseType.longType
       def nodeRebuild = copy()
     }
 
@@ -112,7 +112,7 @@ trait MySQLDriver extends JdbcDriver { driver =>
   }
 
   class TableDDLBuilder(table: Table[_]) extends super.TableDDLBuilder(table) {
-    override protected def dropForeignKey(fk: ForeignKey[_ <: TableNode, _]) = {
+    override protected def dropForeignKey(fk: ForeignKey) = {
       "ALTER TABLE " + table.tableName + " DROP FOREIGN KEY " + fk.name
     }
   }
@@ -121,6 +121,7 @@ trait MySQLDriver extends JdbcDriver { driver =>
     override protected def appendOptions(sb: StringBuilder) {
       if(defaultLiteral ne null) sb append " DEFAULT " append defaultLiteral
       if(notNull) sb append " NOT NULL"
+      else if(sqlType.toUpperCase == "TIMESTAMP") sb append " NULL"
       if(autoIncrement) sb append " AUTO_INCREMENT"
       if(primaryKey) sb append " PRIMARY KEY"
     }

@@ -4,9 +4,9 @@ import org.junit.Assert
 import org.junit.Assert._
 import scala.slick.jdbc.{GetResult, StaticQuery => Q}
 import Q.interpolation
-import com.typesafe.slick.testkit.util.{TestkitTest, TestDB}
+import com.typesafe.slick.testkit.util.{JdbcTestDB, TestDB, TestkitTest}
 
-class PlainSQLTest(val tdb: TestDB) extends TestkitTest {
+class PlainSQLTest extends TestkitTest[JdbcTestDB] {
 
   implicit val getUserResult = GetResult(r => new User(r.<<, r.<<))
 
@@ -76,9 +76,9 @@ class PlainSQLTest(val tdb: TestDB) extends TestkitTest {
     }
     assertEquals(Set(User(1,"szeiger"), User(2,"guest"), User(0,"admin"), User(3,"foo")), s4)
 
-    println("All users with elements.foreach:")
+    println("All users with iterator.foreach:")
     var s5 = Set[User]()
-    for(s <- getUsers(None).elements) {
+    for(s <- getUsers(None).iterator) {
       println("  "+s)
       s5 += s
     }

@@ -6,8 +6,7 @@ import scala.slick.ast._
 import scala.slick.compiler.{QueryCompiler, CompilerState, Phase}
 import scala.slick.jdbc.{PositionedParameters, PositionedResult, ResultSetType, JdbcType}
 import scala.slick.lifted._
-import scala.slick.profile.{SqlProfile, Capability}
-import scala.slick.util.ValueLinearizer
+import scala.slick.profile.{RelationalProfile, SqlProfile, Capability}
 import scala.slick.util.MacroSupport.macroSupportInterpolation
 import java.util.UUID
 import java.sql.{Blob, Clob, Date, Time, Timestamp, SQLException}
@@ -19,24 +18,24 @@ import java.sql.{Blob, Clob, Date, Time, Timestamp, SQLException}
  * ''without'' the following capabilities:
  *
  * <ul>
- *   <li>[[scala.slick.profile.SqlProfile.capabilities.columnDefaults]]:
+ *   <li>[[scala.slick.profile.RelationalProfile.capabilities.columnDefaults]]:
  *     Access does not allow the definition of default values through ODBC but
  *     only via OLEDB/ADO. Trying to generate DDL SQL code which uses this
  *     feature throws a SlickException.</li>
- *   <li>[[scala.slick.profile.SqlProfile.capabilities.foreignKeyActions]]:
+ *   <li>[[scala.slick.profile.RelationalProfile.capabilities.foreignKeyActions]]:
  *     All foreign key actions are ignored. Access supports CASCADE and SET
  *     NULL but not through ODBC, only via OLEDB/ADO.</li>
- *   <li>[[scala.slick.profile.SqlProfile.capabilities.functionDatabase]],
- *     [[scala.slick.profile.SqlProfile.capabilities.functionUser]]:
+ *   <li>[[scala.slick.profile.RelationalProfile.capabilities.functionDatabase]],
+ *     [[scala.slick.profile.RelationalProfile.capabilities.functionUser]]:
  *     <code>Functions.user</code> and <code>Functions.database</code> are
  *     not available in Access. Slick will return empty strings for both.</li>
- *   <li>[[scala.slick.profile.SqlProfile.capabilities.likeEscape]]:
+ *   <li>[[scala.slick.profile.RelationalProfile.capabilities.likeEscape]]:
  *     Access does not allow you to specify a custom escape character for
  *     <code>like</code>.</li>
- *   <li>[[scala.slick.profile.SqlProfile.capabilities.pagingDrop]]:
+ *   <li>[[scala.slick.profile.RelationalProfile.capabilities.pagingDrop]]:
  *     <code>Drop(n)</code> modifiers are not supported. Trying to generate
  *     SQL code which uses this feature throws a SlickException.</li>
- *   <li>[[scala.slick.profile.SqlProfile.capabilities.pagingPreciseTake]]:
+ *   <li>[[scala.slick.profile.RelationalProfile.capabilities.pagingPreciseTake]]:
  *     <code>Take(n)</code> modifiers are mapped to <code>SELECT TOP n</code>
  *     which may return more rows than requested if they are not unique.</li>
  *   <li>[[scala.slick.profile.SqlProfile.capabilities.sequence]]:
@@ -45,17 +44,17 @@ import java.sql.{Blob, Clob, Date, Time, Timestamp, SQLException}
  *     [[scala.slick.driver.JdbcProfile.capabilities.returnInsertOther]]:
  *     Returning columns from an INSERT operation is not supported. Trying to
  *     execute such an insert statement throws a SlickException.</li>
- *   <li>[[scala.slick.profile.SqlProfile.capabilities.typeBlob]]:
+ *   <li>[[scala.slick.profile.RelationalProfile.capabilities.typeBlob]]:
  *     Trying to use <code>java.sql.Blob</code> objects causes a NPE in the
  *     JdbcOdbcDriver. Binary data in the form of <code>Array[Byte]</code> is
  *     supported.</li>
- *   <li>[[scala.slick.profile.SqlProfile.capabilities.setByteArrayNull]]:
+ *   <li>[[scala.slick.profile.RelationalProfile.capabilities.setByteArrayNull]]:
  *     Setting an Option[ Array[Byte] ] column to None causes an Exception
  *     in the JdbcOdbcDriver.</li>
- *   <li>[[scala.slick.profile.SqlProfile.capabilities.typeBigDecimal]],
- *     [[scala.slick.profile.SqlProfile.capabilities.typeLong]]:
+ *   <li>[[scala.slick.profile.RelationalProfile.capabilities.typeBigDecimal]],
+ *     [[scala.slick.profile.RelationalProfile.capabilities.typeLong]]:
  *     Access does not support decimal or long integer types.</li>
- *   <li>[[scala.slick.profile.SqlProfile.capabilities.zip]]:
+ *   <li>[[scala.slick.profile.RelationalProfile.capabilities.zip]]:
  *     Row numbers (required by <code>zip</code> and
  *     <code>zipWithIndex</code>) are not supported. Trying to generate SQL
  *     code which uses this feature throws a SlickException.</li>
@@ -66,21 +65,21 @@ import java.sql.{Blob, Clob, Date, Time, Timestamp, SQLException}
 trait AccessDriver extends JdbcDriver { driver =>
 
   override protected def computeCapabilities: Set[Capability] = (super.computeCapabilities
-    - SqlProfile.capabilities.columnDefaults
-    - SqlProfile.capabilities.foreignKeyActions
-    - SqlProfile.capabilities.functionDatabase
-    - SqlProfile.capabilities.functionUser
-    - SqlProfile.capabilities.likeEscape
-    - SqlProfile.capabilities.pagingDrop
-    - SqlProfile.capabilities.pagingPreciseTake
+    - RelationalProfile.capabilities.columnDefaults
+    - RelationalProfile.capabilities.foreignKeyActions
+    - RelationalProfile.capabilities.functionDatabase
+    - RelationalProfile.capabilities.functionUser
+    - RelationalProfile.capabilities.likeEscape
+    - RelationalProfile.capabilities.pagingDrop
+    - RelationalProfile.capabilities.pagingPreciseTake
     - SqlProfile.capabilities.sequence
     - JdbcProfile.capabilities.returnInsertKey
     - JdbcProfile.capabilities.returnInsertOther
-    - SqlProfile.capabilities.setByteArrayNull
-    - SqlProfile.capabilities.typeBigDecimal
-    - SqlProfile.capabilities.typeBlob
-    - SqlProfile.capabilities.typeLong
-    - SqlProfile.capabilities.zip
+    - RelationalProfile.capabilities.setByteArrayNull
+    - RelationalProfile.capabilities.typeBigDecimal
+    - RelationalProfile.capabilities.typeBlob
+    - RelationalProfile.capabilities.typeLong
+    - RelationalProfile.capabilities.zip
     )
 
   def integralTypes = Set(
@@ -90,20 +89,13 @@ trait AccessDriver extends JdbcDriver { driver =>
     java.sql.Types.TINYINT
   )
 
-  override val Implicit: Implicits = new Implicits
-  override val simple: SimpleQL = new Implicits with SimpleQL
   override val compiler =
     QueryCompiler.relational.addBefore(new ExistsToCount, QueryCompiler.relationalPhases.head)
-
-  class Implicits extends super.Implicits {
-    override implicit def queryToQueryInvoker[T, U](q: Query[T, _ <: U]): QueryInvoker[U] = new QueryInvoker(newSelectStatementCompiler.run(Node(q)).tree)
-  }
 
   val retryCount = 10
   override val columnTypes = new JdbcTypes(retryCount)
 
   override def createQueryBuilder(n: Node, state: CompilerState): QueryBuilder = new QueryBuilder(n, state)
-  override def createInsertBuilder(node: Node): InsertBuilder = new InsertBuilder(node)
   override def createTableDDLBuilder(table: Table[_]): TableDDLBuilder = new TableDDLBuilder(table)
   override def createColumnDDLBuilder(column: FieldSymbol, table: Table[_]): ColumnDDLBuilder = new ColumnDDLBuilder(column)
 
@@ -115,6 +107,11 @@ trait AccessDriver extends JdbcDriver { driver =>
     case java.sql.Types.TINYINT => "BYTE"
     case _ => super.defaultSqlTypeName(tmd)
   }
+
+  /* Using Auto or ForwardOnly causes a NPE in the JdbcOdbcDriver */
+  override val invokerMutateType: ResultSetType = ResultSetType.ScrollInsensitive
+  /* Access goes forward instead of backward after deleting the current row in a mutable result set */
+  override val invokerPreviousAfterDelete = true
 
   class QueryBuilder(tree: Node, state: CompilerState) extends super.QueryBuilder(tree, state) {
     override protected val supportsTuples = false
@@ -134,7 +131,7 @@ trait AccessDriver extends JdbcDriver { driver =>
       case c: ConditionalExpr => {
         b"switch("
         var first = true
-        c.clauses.reverseIterator.foreach { case IfThen(l, r) =>
+        c.clauses.foreach { case IfThen(l, r) =>
           if(first) first = false
           else b","
           b"$l,$r"
@@ -176,13 +173,8 @@ trait AccessDriver extends JdbcDriver { driver =>
     override protected def buildFetchOffsetClause(fetch: Option[Long], offset: Option[Long]) = ()
   }
 
-  class InsertBuilder(node: Node) extends super.InsertBuilder(node) {
-    override def buildReturnColumns(node: Node, table: String): IndexedSeq[FieldSymbol] =
-      throw new SlickException("Returning columns from INSERT statements is not supported by Access")
-  }
-
   class TableDDLBuilder(table: Table[_]) extends super.TableDDLBuilder(table) {
-    override protected def addForeignKey(fk: ForeignKey[_ <: TableNode, _], sb: StringBuilder) {
+    override protected def addForeignKey(fk: ForeignKey, sb: StringBuilder) {
       sb append "CONSTRAINT " append quoteIdentifier(fk.name) append " FOREIGN KEY("
       addForeignKeyColumnList(fk.linearizedSourceColumns, sb, table.tableName)
       sb append ") REFERENCES " append quoteIdentifier(fk.targetTable.tableName) append "("
@@ -195,11 +187,9 @@ trait AccessDriver extends JdbcDriver { driver =>
   class ColumnDDLBuilder(column: FieldSymbol) extends super.ColumnDDLBuilder(column) {
     override def appendColumn(sb: StringBuilder) {
       sb append quoteIdentifier(column.name) append ' '
-      if(autoIncrement) {
-        sb append "AUTOINCREMENT"
-        autoIncrement = false
-      }
+      if(autoIncrement && !customSqlType) sb append "AUTOINCREMENT"
       else sb append sqlType
+      autoIncrement = false
       appendOptions(sb)
     }
 
@@ -292,19 +282,11 @@ trait AccessDriver extends JdbcDriver { driver =>
     override val uuidJdbcType = new UUIDJdbcType with Retry[UUID]
   }
 
-  class QueryInvoker[R](tree: Node) extends super.QueryInvoker[R](tree) {
-    /* Using Auto or ForwardOnly causes a NPE in the JdbcOdbcDriver */
-    override protected val mutateType: ResultSetType = ResultSetType.ScrollInsensitive
-    /* Access goes forward instead of backward after deleting the current row in a mutable result set */
-    override protected val previousAfterDelete = true
-  }
-
   /** Query compiler phase that rewrites Exists calls in projections to
     * equivalent CountAll > 0 calls which can then be fused into aggregation
     * sub-queries in the fuseComprehensions phase. */
   class ExistsToCount extends Phase {
     val name = "access:existsToCount"
-    import StaticType._
 
     def apply(state: CompilerState) = state.map(n => tr(n, false))
 

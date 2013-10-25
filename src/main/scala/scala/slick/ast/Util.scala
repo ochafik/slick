@@ -1,22 +1,12 @@
 package scala.slick.ast
 
 import scala.language.implicitConversions
-import scala.collection.mutable.{HashMap, HashSet, ArrayBuffer}
+import scala.collection.mutable.{HashSet, ArrayBuffer}
 
 /**
  * Utility methods for AST manipulation.
  */
 object Util {
-
-  abstract class Memoizer[A, B] extends (A => B) {
-    def state: scala.collection.Map[A, B]
-  }
-
-  def memoized[A, B](f: (A => B) => A => B): Memoizer[A, B] = new Memoizer[A, B] {
-    private[this] lazy val g = f(this)
-    def apply(a: A) = state.getOrElseUpdate(a, g(a))
-    val state = new HashMap[A, B]
-  }
 
   def mapOrNone[A <: AnyRef](c: Traversable[A])(f: A => A): Option[IndexedSeq[A]] = {
     val b = new ArrayBuffer[A]
@@ -50,9 +40,7 @@ final class NodeOps(val tree: Node) extends AnyVal {
 
   def collectAll[T](pf: PartialFunction[Node, Seq[T]]): Iterable[T] = collect[Seq[T]](pf).flatten
 
-  def replace(f: PartialFunction[Node, Node]): Node = NodeOps.replace(tree, f)
-
-  def replaceKeepType(f: PartialFunction[Node, Node]): Node = NodeOps.replaceKeepType(tree, f)
+  def replace(f: PartialFunction[Node, Node], keepType: Boolean = false): Node = NodeOps.replace(tree, f, keepType)
 
   def foreach[U](f: (Node => U)) {
     def g(n: Node) {
@@ -60,14 +48,6 @@ final class NodeOps(val tree: Node) extends AnyVal {
       n.nodeChildren.foreach(g)
     }
     g(tree)
-  }
-
-  def flattenProduct = {
-    def f(n: Node): IndexedSeq[Node] = n match {
-      case ProductNode(ns) => ns.flatMap(f).toIndexedSeq
-      case n => IndexedSeq(n)
-    }
-    f(tree)
   }
 
   def mapChildrenWithScope(f: (Option[Symbol], Node, Scope) => Node, scope: Scope): Node = tree match {
@@ -80,12 +60,26 @@ final class NodeOps(val tree: Node) extends AnyVal {
       }
     case n => n.nodeMapChildren(ch => f(None, ch, scope))
   }
+
+  def findNode(p: Node => Boolean): Option[Node] = {
+    if(p(tree)) Some(tree)
+    else {
+      val it = tree.nodeChildren.iterator.map(_.findNode(p)).dropWhile(_.isEmpty)
+      if(it.hasNext) it.next() else None
+    }
+  }
+
+  def select(field: Symbol): Node = (field, tree) match {
+    case (s: AnonSymbol, StructNode(ch)) => ch.find{ case (s2,_) => s == s2 }.get._2
+    case (s: FieldSymbol, StructNode(ch)) => ch.find{ case (s2,_) => s == s2 }.get._2
+    case (s: ElementSymbol, ProductNode(ch)) => ch(s.idx-1)
+  }
 }
 
 object NodeOps {
   import Util._
 
-  // These methods should be in the class by 2.10.0-RC1 took away the ability
+  // These methods should be in the class but 2.10.0-RC1 took away the ability
   // to use closures in value classes
 
   def collect[T](tree: Node, pf: PartialFunction[Node, T]): Iterable[T] = {
@@ -94,11 +88,8 @@ object NodeOps {
     b
   }
 
-  def replace(tree: Node, f: PartialFunction[Node, Node]): Node =
-    f.applyOrElse(tree, ({ case n: Node => n.nodeMapChildren(_.replace(f)) }): PartialFunction[Node, Node])
-
-  def replaceKeepType(tree: Node, f: PartialFunction[Node, Node]): Node =
-    f.applyOrElse(tree, ({ case n: Node => n.nodeMapChildrenKeepType(_.replace(f)) }): PartialFunction[Node, Node])
+  def replace(tree: Node, f: PartialFunction[Node, Node], keepType: Boolean): Node =
+    f.applyOrElse(tree, ({ case n: Node => n.nodeMapChildren(_.replace(f, keepType), keepType) }): PartialFunction[Node, Node])
 }
 
 /** Some less general but still useful methods for the code generators. */
@@ -126,8 +117,24 @@ object ExtraUtil {
     case n => n.nodeMapChildren(ch => replaceRowNumber(ch)(f))
   }
 
-  def hasRefToOneOf(n: Node, s: scala.collection.Set[Symbol]): Boolean = n match {
-    case r: RefNode => s.contains(r.nodeReference) || n.nodeChildren.exists(ch => hasRefToOneOf(ch, s))
-    case n => n.nodeChildren.exists(ch => hasRefToOneOf(ch, s))
+  def linearizeFieldRefs(n: Node): IndexedSeq[Node] = {
+    val sels = new ArrayBuffer[Node]
+    def f(n: Node): Unit = n match {
+      case Path(_) => sels += n
+      case _: ProductNode | _: OptionApply | _: GetOrElse | _: TypeMapping | _: ClientSideOp =>
+        n.nodeChildren.foreach(f)
+    }
+    f(n)
+    sels
   }
+}
+
+object ProductOfCommonPaths {
+  def unapply(n: ProductNode): Option[(Symbol, Vector[List[Symbol]])] = if(n.nodeChildren.isEmpty) None else
+    n.nodeChildren.foldLeft(null: Option[(Symbol, Vector[List[Symbol]])]) {
+      case (None, _) => None
+      case (null, FwdPath(sym :: rest)) => Some((sym, Vector(rest)))
+      case (Some((sym0, v)), FwdPath(sym :: rest)) if sym == sym0 => Some((sym, v :+ rest))
+      case _ => None
+    }
 }

@@ -1,6 +1,7 @@
 package scala.slick.jdbc
 
-import scala.slick.ast.{OptionTypedType, BaseTypedType, TypedType}
+import scala.slick.ast._
+import scala.reflect.ClassTag
 
 /**
  * A JdbcType object represents a Scala type that can be
@@ -8,11 +9,6 @@ import scala.slick.ast.{OptionTypedType, BaseTypedType, TypedType}
  * for the standard types of a profile are provided by the drivers.
  */
 trait JdbcType[T] extends TypedType[T] { self =>
-  /**
-   * A zero value for the type. This is used as a default instead of NULL when
-   * used as a non-nullable column.
-   */
-  def zero: T
   /**
    * The constant from java.sql.Types that is used for setting parameters of
    * the type to NULL.
@@ -47,10 +43,11 @@ trait JdbcType[T] extends TypedType[T] { self =>
   def valueToSQLLiteral(value: T): String = value.toString
   def nullable = false
 
-  override def optionType: OptionTypedType[T] with JdbcType[Option[T]] = new OptionTypedType[T](this) with JdbcType[Option[T]] {
-    def zero = None
+  override def optionType: OptionTypedType[T] with JdbcType[Option[T]] = new OptionTypedType[T] with JdbcType[Option[T]] {
+    val elementType = self
     def sqlType = self.sqlType
     override def sqlTypeName = self.sqlTypeName
+    def scalaType = new ScalaOptionType[T](self.scalaType)
     def setValue(v: Option[T], p: PositionedParameters) = self.setOption(v, p)
     def setOption(v: Option[Option[T]], p: PositionedParameters) = self.setOption(v.getOrElse(None), p)
     def nextValue(r: PositionedResult) = self.nextOption(r)
@@ -58,6 +55,11 @@ trait JdbcType[T] extends TypedType[T] { self =>
     override def valueToSQLLiteral(value: Option[T]): String = value.map(self.valueToSQLLiteral).getOrElse("null")
     override def nullable = true
     override def toString = s"Option[$self]"
+    def mapChildren(f: Type => Type): OptionTypedType[T] with JdbcType[Option[T]] = {
+      val e2 = f(elementType)
+      if(e2 eq elementType) this
+      else e2.asInstanceOf[JdbcType[T]].optionType
+    }
   }
 
   override def toString = {
@@ -75,7 +77,7 @@ object JdbcType {
     yield f.get(null).asInstanceOf[Int] -> f.getName)
 }
 
-abstract class MappedJdbcType[T, U](implicit tmd: JdbcType[U]) extends JdbcType[T] {
+abstract class MappedJdbcType[T, U](implicit tmd: JdbcType[U], tag: ClassTag[T]) extends JdbcType[T] {
   def map(t: T): U
   def comap(u: U): T
 
@@ -84,7 +86,6 @@ abstract class MappedJdbcType[T, U](implicit tmd: JdbcType[U]) extends JdbcType[
   def newValueToSQLLiteral(value: T): Option[String] = None
   def newNullable: Option[Boolean] = None
 
-  def zero = comap(tmd.zero)
   def sqlType = newSqlType.getOrElse(tmd.sqlType)
   override def sqlTypeName = newSqlTypeName.getOrElse(tmd.sqlTypeName)
   def setValue(v: T, p: PositionedParameters) = tmd.setValue(map(v), p)
@@ -95,10 +96,11 @@ abstract class MappedJdbcType[T, U](implicit tmd: JdbcType[U]) extends JdbcType[
   def updateValue(v: T, r: PositionedResult) = tmd.updateValue(map(v), r)
   override def valueToSQLLiteral(value: T) = newValueToSQLLiteral(value).getOrElse(tmd.valueToSQLLiteral(map(value)))
   override def nullable = newNullable.getOrElse(tmd.nullable)
+  def scalaType = ScalaBaseType[T]
 }
 
 object MappedJdbcType {
-  def base[T, U](tmap: T => U, tcomap: U => T)(implicit tm: JdbcType[U]): JdbcType[T] with BaseTypedType[T] =
+  def base[T : ClassTag, U : JdbcType](tmap: T => U, tcomap: U => T): JdbcType[T] with BaseTypedType[T] =
     new MappedJdbcType[T, U] with BaseTypedType[T] {
       def map(t: T) = tmap(t)
       def comap(u: U) = tcomap(u)

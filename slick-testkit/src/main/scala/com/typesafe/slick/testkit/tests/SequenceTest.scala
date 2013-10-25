@@ -2,9 +2,9 @@ package com.typesafe.slick.testkit.tests
 
 import scala.language.postfixOps
 import org.junit.Assert._
-import com.typesafe.slick.testkit.util.{TestkitTest, TestDB}
+import com.typesafe.slick.testkit.util.{JdbcTestDB, TestkitTest}
 
-class SequenceTest(val tdb: TestDB) extends TestkitTest {
+class SequenceTest extends TestkitTest[JdbcTestDB] {
   import tdb.profile.simple._
 
   override val reuseInstance = true
@@ -12,19 +12,20 @@ class SequenceTest(val tdb: TestDB) extends TestkitTest {
   def test1 = ifCap(scap.sequence) {
     case class User(id: Int, first: String, last: String)
 
-    object Users extends Table[Int]("users") {
+    class Users(tag: Tag) extends Table[Int](tag, "users") {
       def id = column[Int]("id", O PrimaryKey)
       def * = id
     }
+    val users = TableQuery[Users]
 
     val mySequence = Sequence[Int]("mysequence") start 200 inc 10
 
-    val ddl = Users.ddl ++ mySequence.ddl
+    val ddl = users.ddl ++ mySequence.ddl
     ddl.createStatements.foreach(println)
     ddl.create
-    Users.insertAll(1, 2, 3)
+    users.insertAll(1, 2, 3)
 
-    val q1 = for(u <- Users) yield (mySequence.next, u.id)
+    val q1 = for(u <- users) yield (mySequence.next, u.id)
     println("q1: " + q1.selectStatement)
     assertEquals(Set((200, 1), (210, 2), (220, 3)), q1.list.toSet)
 

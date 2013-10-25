@@ -1,38 +1,31 @@
 package com.typesafe.slick.testkit.tests
 
 import org.junit.Assert._
-import scala.slick.ast.Dump
-import com.typesafe.slick.testkit.util.{TestkitTest, TestDB}
+import com.typesafe.slick.testkit.util.{RelationalTestDB, TestkitTest}
 
-class CountTest(val tdb: TestDB) extends TestkitTest {
+class CountTest extends TestkitTest[RelationalTestDB] {
   import tdb.profile.simple._
 
   def test {
-    object TestTable extends Table[Int]("TEST") {
+    class TestTable(tag: Tag) extends Table[Int](tag, "TEST") {
       def id = column[Int]("ID")
       def * = id
     }
-    TestTable.ddl.create
-    TestTable.insertAll(1, 2, 3, 4, 5)
+    val testTable = TableQuery(new TestTable(_))
 
-    val q1 = Query(TestTable.length)
-    Dump(q1, "q1: ")
-    println("q1: "+q1.selectStatement)
-    assertEquals(5, q1.first)
+    testTable.ddl.create
+    testTable ++= Seq(1, 2, 3, 4, 5)
 
-    val q2 = Query(Query(TestTable).length)
-    Dump(q2, "q2: ")
-    println("q2: "+q2.selectStatement)
-    assertEquals(5, q2.first)
+    val q1 = Query(testTable.length)
+    assertEquals(Vector(5), q1.run)
 
-    val q3 = Query(TestTable.filter(_.id < 3).length)
-    Dump(q3, "q3: ")
-    println("q3: "+q3.selectStatement)
-    assertEquals(2, q3.first)
+    val q2 = testTable.length
+    assertEquals(5, q2.run)
 
-    val q4 = Query(Query(TestTable).take(2).length)
-    Dump(q4, "q4: ")
-    println("q4: "+q4.selectStatement)
-    assertEquals(2, q4.first)
+    val q3 = testTable.filter(_.id < 3).length
+    assertEquals(2, q3.run)
+
+    val q4 = testTable.take(2).length
+    assertEquals(2, q4.run)
   }
 }

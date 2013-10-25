@@ -1,35 +1,34 @@
 package com.typesafe.slick.testkit.tests
 
 import org.junit.Assert._
-import com.typesafe.slick.testkit.util.{TestkitTest, TestDB}
+import com.typesafe.slick.testkit.util.{JdbcTestDB, TestkitTest}
 
-class TransactionTest(val tdb: TestDB) extends TestkitTest {
+class TransactionTest extends TestkitTest[JdbcTestDB] {
   import tdb.profile.simple._
 
   def test {
 
-    val T = new Table[Int]("t") {
+    class T(tag: Tag) extends Table[Int](tag, "t") {
       def a = column[Int]("a")
       def * = a
     }
+    val ts = TableQuery[T]
 
-    T.ddl.create
-
-    val q = Query(T)
+    ts.ddl.create
 
     sharedSession withTransaction {
-      T.insert(42)
-      assertEquals(Some(42), q.firstOption)
+      ts.insert(42)
+      assertEquals(Some(42), ts.firstOption)
       sharedSession.rollback()
     }
-    assertEquals(None, q.firstOption)
+    assertEquals(None, ts.firstOption)
 
-    T.insert(1)
+    ts.insert(1)
     sharedSession withTransaction {
-      Query(T).delete
-      assertEquals(None, q.firstOption)
+      ts.delete
+      assertEquals(None, ts.firstOption)
       sharedSession.rollback()
     }
-    assertEquals(Some(1), q.firstOption)
+    assertEquals(Some(1), ts.firstOption)
   }
 }

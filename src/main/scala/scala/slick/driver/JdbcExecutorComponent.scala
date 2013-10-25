@@ -1,46 +1,28 @@
 package scala.slick.driver
 
-import scala.slick.ast.Node
-import scala.slick.compiler.CodeGen
-import scala.slick.jdbc.{PositionedParameters, PositionedResult, StatementInvoker}
-import scala.slick.lifted.Shape
-import scala.slick.util.{SQLBuilder, ValueLinearizer, CollectionLinearizer, RecordLinearizer}
-import java.sql.PreparedStatement
+import scala.slick.ast.{CompiledStatement, First, ResultSetMapping, Node}
+import scala.slick.ast.Util._
+import scala.slick.ast.TypeUtil._
+import scala.slick.util.SQLBuilder
+import scala.slick.profile.SqlExecutorComponent
 
-trait JdbcExecutorComponent { driver: JdbcDriver =>
+trait JdbcExecutorComponent extends SqlExecutorComponent { driver: JdbcDriver =>
 
-  class QueryExecutor[R](tree: Node, linearizer: ValueLinearizer[_]) {
+  type QueryExecutor[T] = QueryExecutorDef[T]
 
-    def selectStatement = sres.sql
+  def createQueryExecutor[R](tree: Node, param: Any): QueryExecutor[R] = new QueryExecutorDef[R](tree, param)
 
-    protected val (_, sres: SQLBuilder.Result) = CodeGen.findResult(tree)
+  class QueryExecutorDef[R](tree: Node, param: Any) extends super.QueryExecutorDef[R] {
 
-    def run(implicit session: Backend#Session): R = {
-      val i = new StatementInvoker[Unit, Any] {
-        protected def getStatement = sres.sql
-        protected def setParam(param: Unit, st: PreparedStatement): Unit = sres.setter(new PositionedParameters(st), null)
-        protected def extractValue(rs: PositionedResult) = linearizer.narrowedLinearizer.asInstanceOf[RecordLinearizer[Any]].getResult(driver, rs)
-      }
-      val res = linearizer match {
-        case _: RecordLinearizer[_] => i.first()
-        case c =>
-          val builder = c.asInstanceOf[CollectionLinearizer[Any, Any]].canBuildFrom()
-          i.foreach((), builder += _)
-          builder.result()
-      }
-      res.asInstanceOf[R]
-    }
-  }
+    lazy val selectStatement =
+      tree.findNode(_.isInstanceOf[CompiledStatement]).get
+        .asInstanceOf[CompiledStatement].extra.asInstanceOf[SQLBuilder.Result].sql
 
-  // Work-around for SI-3346
-  final class UnshapedQueryExecutor[M](val value: M) {
-    @inline def run[U](implicit shape: Shape[M, U, _], session: Backend#Session): U =
-      Implicit.recordToQueryExecutor(value).run
-  }
-
-  // Work-around for SI-3346
-  final class ToQueryExecutor[M](val value: M) {
-    @inline def toQueryExecutor[U](implicit shape: Shape[M, U, _]): QueryExecutor[U] =
-      Implicit.recordToQueryExecutor(value)
+    def run(implicit session: Backend#Session): R = (tree match {
+      case rsm: ResultSetMapping =>
+        createQueryInvoker[Any, Any](rsm).to(param)(session, rsm.nodeType.asCollectionType.cons.canBuildFrom)
+      case First(rsm: ResultSetMapping) =>
+        createQueryInvoker[Any, Any](rsm).first(param)
+    }).asInstanceOf[R]
   }
 }

@@ -2,23 +2,22 @@ package scala.slick.benchmark
 
 import collection.mutable.ArrayBuffer
 import scala.slick.driver.H2Driver.simple._
-import Database.threadLocalSession
 
 object IteratorPerformanceBenchmark {
   def main(args: Array[String]) {
-    val Props = new Table[(String, String)]("properties") {
+    class Props(tag: Tag) extends Table[(String, String)](tag, "properties") {
       def key = column[String]("key", O.PrimaryKey)
-
       def value = column[String]("value")
-
-      def * = key ~ value
+      def * = (key, value)
     }
-    Database.forURL("jdbc:h2:mem:test1", driver = "org.h2.Driver") withSession {
-      Props.ddl.create
+    val props = TableQuery[Props]
+
+    Database.forURL("jdbc:h2:mem:test1", driver = "org.h2.Driver") withSession { implicit session =>
+      props.ddl.create
       val count = 10000
       val size = 1000
-      for (i <- 1 to size) Props.insert("k" + i, "v" + i)
-      val inv = Query(Props).invoker
+      for (i <- 1 to size) props.insert("k" + i, "v" + i)
+      val inv = props.invoker
 
       val buf = new ArrayBuffer[(String, String)]
       def measure(s: String)(f: => Any) {
@@ -39,16 +38,16 @@ object IteratorPerformanceBenchmark {
             i => buf += i
           }, 0)
         }
-        measure("elements loop") {
-          val it = inv.elements()
+        measure("iterator loop") {
+          val it = inv.iterator()
           try {
             while (it.hasNext) buf += it.next
           } finally {
             it.close()
           }
         }
-        measure("elements.foreach") {
-          inv.elements().foreach(i => buf += i)
+        measure("iterator.foreach") {
+          inv.iterator().foreach(i => buf += i)
         }
         r += 1
       }

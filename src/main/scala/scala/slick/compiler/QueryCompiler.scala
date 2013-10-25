@@ -62,26 +62,23 @@ class QueryCompiler(val phases: Vector[Phase]) extends Logging {
 object QueryCompiler {
   val standardPhases = Vector(
     // Clean up trees from the lifted embedding
-    Phase.localizeRefs,
-    Phase.reconstructProducts,
     Phase.inline,
-    Phase.letDynamicEliminated,
     Phase.assignUniqueSymbols,
     // Distribute and normalize
-    Phase.expandTables,
+    Phase.inferTypes,
     Phase.createResultSetMapping,
     Phase.forceOuterBinds,
     // Convert to column form
-    Phase.expandRefs,
-    Phase.replaceFieldSymbols,
-    Phase.rewritePaths,
+    Phase.expandTables,
+    Phase.expandRecords,
+    Phase.flattenProjections,
     Phase.relabelUnions,
-    Phase.pruneFields
+    Phase.pruneFields,
+    Phase.assignTypes
   )
 
   val relationalPhases = Vector(
     Phase.resolveZipJoins,
-    Phase.assignTypes,
     Phase.convertToComprehensions,
     Phase.fuseComprehensions,
     Phase.fixRowNumberOrdering,
@@ -93,6 +90,8 @@ object QueryCompiler {
 
   /** The default compiler with the additional conversion to relational trees */
   val relational = new QueryCompiler(standardPhases ++ relationalPhases)
+
+  def apply(phases: Phase*) = new QueryCompiler(phases.toVector)
 }
 
 /** A phase of the query compiler, identified by a unique name */
@@ -109,17 +108,14 @@ trait Phase extends (CompilerState => CompilerState) with Logging {
 
 object Phase {
   /** The standard phases of the query compiler */
-  val localizeRefs = new LocalizeRefs
-  val reconstructProducts = new ReconstructProducts
   val inline = new Inline
-  val letDynamicEliminated = new LetDynamicEliminated
   val assignUniqueSymbols = new AssignUniqueSymbols
-  val expandTables = new ExpandTables
+  val inferTypes = new InferTypes
   val createResultSetMapping = new CreateResultSetMapping
   val forceOuterBinds = new ForceOuterBinds
-  val expandRefs = new ExpandRefs
-  val replaceFieldSymbols = new ReplaceFieldSymbols
-  val rewritePaths = new RewritePaths
+  val expandTables = new ExpandTables
+  val expandRecords = new ExpandRecords
+  val flattenProjections = new FlattenProjections
   val relabelUnions = new RelabelUnions
   val pruneFields = new PruneFields
   val resolveZipJoins = new ResolveZipJoins
@@ -135,7 +131,7 @@ object Phase {
 class CompilerState private (val compiler: QueryCompiler, val symbolNamer: SymbolNamer,
                              val tree: Node, state: HashMap[String, Any]) {
   def this(compiler: QueryCompiler, tree: Node) =
-    this(compiler, new SymbolNamer("s"), tree, new HashMap)
+    this(compiler, new SymbolNamer("s", "t"), tree, new HashMap)
 
   def get[P <: Phase](p: P): Option[p.State] = state.get(p.name).asInstanceOf[Option[p.State]]
   def + [S, P <: Phase { type State = S }](t: (P, S)) =
